@@ -52,3 +52,75 @@ We adapted our architecture per `AI_Project_Platform_Monorepo_Phased_Implementat
 - `tests/health.test.ts`: Automated Vitest + Supertest suite (100% pass).
 - Live verification: Verified `GET /health` returns HTTP 200 and unmapped route returns HTTP 404 with structured JSON.
 
+---
+
+## Phase 4: API Contracts & Service-to-Service Communication (2026-11-06)
+
+### 1. Concepts Mastered
+- **Contract Compatibility between TypeScript & Pydantic:**
+  - TypeScript types (`ChallengeGenerateRequest`, `ChallengeJobResponse`) provide compile-time guarantees in Express.
+  - Pydantic models in FastAPI enforce runtime validation and reject malformed requests with `422 Unprocessable Entity`.
+  - JSON wire format alignment: JavaScript camelCase (`projectId`, `jobId`, `codeSummary`) matches across both boundaries without manual property reshaping.
+- **Service Integration Architecture (`FastApiClient`):**
+  - Encapsulates network communication with FastAPI behind a clean domain client interface.
+  - Native `fetch` with `AbortController` timeout guarantees requests do not hang indefinitely if FastAPI is slow or down.
+  - Injects `X-Service-Token` (machine-to-machine authentication) and `X-Correlation-ID` (distributed tracing across services).
+  - Normalizes errors: maps FastAPI error payloads into `AppError` with accurate HTTP status codes (401, 404, 503, 504).
+- **Asynchronous Workflows & Non-blocking API Design:**
+  - Express accepts user requests at `POST /api/v1/challenges/generate`.
+  - Validates required inputs before delegating to FastAPI.
+  - Returns `202 Accepted` immediately so callers receive a tracking `jobId` instead of waiting 30 seconds for AI processing.
+  - Status queries can be polled or retrieved via `GET /api/v1/challenges/jobs/:jobId`.
+
+### 2. Implemented & Verified
+- `src/types/api.types.ts`: Universal `ApiErrorEnvelope` and response contracts.
+- `src/types/challenge.types.ts`: TypeScript contracts mirroring FastAPI Pydantic schemas.
+- `src/integrations/fastapi-client/fastapi-client.ts`: Typed integration client with timeout, correlation ID, and error normalization.
+- `src/routes/challenge.routes.ts`: `POST /api/v1/challenges/generate` and `GET /api/v1/challenges/jobs/:jobId`.
+- `src/app.ts`: Mounted `/api/v1/challenges` routes.
+- `tests/fastapi-client.test.ts`: Unit tests validating token injection, error mapping, and timeout handling.
+- `tests/challenge.routes.test.ts`: Supertest integration tests verifying 400 validation and 202 job creation.
+- Verification: 9/9 tests pass (`npm test`) and `npm run build` compiles with zero errors.
+
+---
+
+## Phase 5: PostgreSQL Foundation & Schema Ownership (2026-11-06)
+
+### 1. Concepts Mastered
+- **Database Connection Pools vs Single Connections:**
+  - Establishing a new TLS/TCP connection to a cloud database (like Neon in AWS eu-west-2) takes 100-300ms.
+  - A connection pool (`pg.Pool`) maintains a pre-warmed pool of active database connections (max 10) that can be borrowed for a query and immediately returned.
+  - Keeps HTTP request latency low and avoids overwhelming the database with connection spikes.
+- **Strict Function-Based Database Layer:**
+  - Following EXDR-004, implemented pure function-based database utilities:
+    - `getDbPool()`: Singleton-pattern closure returning the shared pool.
+    - `query<T>(text, params)`: Executes a parameterized query against a borrowed pool client and releases it.
+    - `withTransaction<T>(callback)`: Manages ACID transaction boundary: calls `BEGIN`, runs operations, calls `COMMIT` on success, or `ROLLBACK` on error, and ensures the client is released even if an exception occurs.
+    - `checkDbHealth()`: Liveness check executing `SELECT 1`.
+    - `closeDbPool()`: Clean pool shutdown for graceful server termination and test teardown.
+- **SQL Injection Prevention via Parameterized Queries:**
+  - Never concatenate raw user input into SQL strings (e.g. `WHERE id = '${id}'`).
+  - Always use placeholders (`$1, $2, $3`) so the database engine treats input as literal data, preventing SQL injection attacks entirely.
+- **Schema Isolation (`app` schema):**
+  - Express creates and writes only to the `app` schema.
+  - All SQL queries and migrations explicitly target `app.*` (e.g. `CREATE TABLE IF NOT EXISTS app.projects ...`).
+  - Express has zero write access to `ai.*` tables.
+- **Lightweight Functional Migration Runner:**
+  - Rather than introducing heavy ORMs with opaque migration engines (like Prisma or TypeORM), built a lightweight, deterministic migration runner `runMigrations()`.
+  - Reads timestamped `.sql` files in sequence from `src/database/migrations/`, wraps execution in an atomic transaction, and tracks applied migrations in `app.schema_migrations`.
+- **Pure Functional Repository Pattern:**
+  - `src/modules/projects/project.repository.ts` exposes pure functions (`createProject`, `findProjectById`, `listProjects`, `deleteProject`).
+  - Pure functions receive inputs and return typed plain TypeScript objects, with zero class instantiation or OOP state.
+
+### 2. Implemented & Verified
+- `src/config/env.ts`: Added `DATABASE_URL` to validated typed configuration.
+- `src/database/connection.ts`: Functional connection pool, query execution, transaction wrapper, and health checker.
+- `src/database/migrate.ts`: Deterministic migration runner executing `.sql` files.
+- `src/database/migrations/001_create_projects.sql`: Creates `app` schema and `app.projects` table with index on `created_by`.
+- `src/modules/projects/project.repository.ts`: Pure functional repository for project persistence.
+- `package.json`: Added `"migrate:app": "tsx src/database/migrate.ts"` script.
+- `tests/database.test.ts`: Automated integration tests verifying Neon connection health and a complete project CRUD lifecycle.
+- Verification: 11/11 tests pass (`npm test`) and `npm run build` compiles with zero TypeScript errors.
+
+
+

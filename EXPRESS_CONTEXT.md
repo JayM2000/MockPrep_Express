@@ -4,11 +4,12 @@
 - **Directory:** `MockPrep_Express/` (co-located in monorepo, excluded from frontend git tracking in root `.gitignore`).
 - **Primary Framework:** Node.js (v22.16.0) + Express + TypeScript.
 - **Role:** Main application gateway and primary backend service as defined in `AI_Project_Platform_Monorepo_Phased_Implementation_Guide.md`.
-- **Current Phase:** Phase 2 (Express API Initialization & Health Endpoint) completed. Next up: Phase 3 (FastAPI AI Service Initialization).
+- **Current Phase:** Phase 5 (PostgreSQL Foundation & Schema Ownership) completed. Next up: Phase 6 (First Complete Vertical Slice: Project Creation).
 - **Core Ownership:**
   - Application user profiles and organizations.
-  - Projects and project ownership.
+  - Projects and project ownership (`app.projects` table in Neon PostgreSQL).
   - Challenge lifecycle, acceptance criteria, and creator approvals.
+  - Public `/api/v1/challenges/*` routing and delegation to FastAPI AI engine.
   - Interview sessions, invitations, and participant rosters.
   - Authoritative countdown timers and server timestamps (never trusts client clocks).
   - Application authorization and AI permission policy enforcement.
@@ -19,13 +20,15 @@
 ## 2. Technology Stack & Planned Boundaries
 - **Runtime:** Node.js v22.16.0
 - **Language:** TypeScript 5
-- **Web Framework:** Express 4 / 5
-- **Validation:** Zod schemas
+- **Web Framework:** Express 5
+- **Architecture Style:** Strict Function-Based (No ES6 Classes, per EXDR-004)
+- **Database Engine:** Neon PostgreSQL 17.11 (cloud PostgreSQL with SSL)
+- **Database Access:** Pure functional `pg` client (`src/database/connection.ts`) with connection pooling, transactions, and functional repositories
+- **Validation:** Type-safe DTOs & Express route validators
 - **Realtime Gateway:** Socket.IO
-- **Database Access:** PostgreSQL client (`pg` / Prisma / Kysely for `app` schema)
 - **Authentication:** Clerk Express SDK / JWT verification
-- **Testing:** Vitest / Jest + Supertest
-- **Service Integration:** Typed HTTP client calling internal FastAPI endpoints (`MockPrep_BE`)
+- **Testing:** Vitest + Supertest
+- **Service Integration:** Typed `FastApiClient` (`src/integrations/fastapi-client/`) with timeout, correlation ID, and secret token injection calling internal FastAPI endpoints (`MockPrep_FastAPI`)
 
 ## 3. Architecture Layout
 ```text

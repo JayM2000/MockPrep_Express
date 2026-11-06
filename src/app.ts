@@ -2,7 +2,9 @@ import express, { Application, Request, Response } from "express"
 import cors from "cors"
 import { env } from "./config/env"
 import { healthRouter } from "./routes/health.routes"
-import { errorHandler, AppError } from "./middleware/error-handler"
+import { challengeRouter } from "./routes/challenge.routes"
+import { errorHandler, createAppError } from "./middleware/error-handler"
+import { HEALTH_PATHS, CHALLENGE_PATHS } from "./utils"
 
 /**
  * Creates and configures the Express application.
@@ -22,11 +24,12 @@ export function createApp(): Application {
   app.use(express.json())
 
   // Route registration
-  app.use("/health", healthRouter)
+  app.use(HEALTH_PATHS.BASE, healthRouter)
+  app.use(CHALLENGE_PATHS.BASE, challengeRouter)
 
   // 404 handler for undefined routes
   app.use((req: Request, res: Response, next) => {
-    next(new AppError(`Cannot ${req.method} ${req.originalUrl}`, 404))
+    next(createAppError(`Cannot ${req.method} ${req.originalUrl}`, 404))
   })
 
   // Centralized error handler (must be registered last)

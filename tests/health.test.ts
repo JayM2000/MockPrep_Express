@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest"
 import request from "supertest"
 import { app } from "../src/app"
+import { HEALTH_PATHS } from "../src/utils/health.paths"
 
 describe("Express API Foundation Tests", () => {
-  it("GET /health should return 200 OK with service details", async () => {
-    const res = await request(app).get("/health")
+  it(`GET ${HEALTH_PATHS.FULL} should return 200 OK with service details`, async () => {
+    const res = await request(app).get(HEALTH_PATHS.FULL)
 
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty("status", "ok")

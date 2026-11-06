@@ -1,19 +1,39 @@
 import { Request, Response, NextFunction } from "express"
 
 /**
- * Custom application error with HTTP status code.
+ * Custom application error interface.
  */
-export class AppError extends Error {
-  public readonly statusCode: number
-  public readonly isOperational: boolean
+export interface AppError extends Error {
+  statusCode: number
+  isOperational: boolean
+}
 
-  constructor(message: string, statusCode: number = 500, isOperational: boolean = true) {
-    super(message)
-    this.statusCode = statusCode
-    this.isOperational = isOperational
-    Object.setPrototypeOf(this, new.target.prototype)
-    Error.captureStackTrace(this, this.constructor)
-  }
+/**
+ * Functional factory to create application errors with HTTP status codes.
+ * Adheres strictly to the project's function-based approach (no ES6 classes).
+ */
+export function createAppError(
+  message: string,
+  statusCode: number = 500,
+  isOperational: boolean = true
+): AppError {
+  const error = new Error(message) as AppError
+  error.name = "AppError"
+  error.statusCode = statusCode
+  error.isOperational = isOperational
+  return error
+}
+
+/**
+ * Functional type guard to determine if an unknown error is an AppError.
+ */
+export function isAppError(err: unknown): err is AppError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "statusCode" in err &&
+    typeof (err as AppError).statusCode === "number"
+  )
 }
 
 /**
@@ -27,7 +47,7 @@ export function errorHandler(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ): void {
-  const statusCode = err instanceof AppError ? err.statusCode : 500
+  const statusCode = isAppError(err) ? err.statusCode : 500
   const message = err.message || "Internal server error"
 
   // Log server errors for diagnosis
