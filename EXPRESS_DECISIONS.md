@@ -66,3 +66,44 @@
   - Kysely / Drizzle (lighter than Prisma, but raw SQL with `pg` ensures the developer learns foundational SQL and relational mechanics first, with zero external dependency lock-in).
 - **Consequences:** Zero ORM generation overhead, clear transparency into SQL queries and performance, strict compliance with the function-based architecture mandate (EXDR-004).
 
+## EXDR-007: DTO Transformation Layer for Database-to-API Decoupling
+- **Date:** 2026-11-18
+- **Status:** Accepted
+- **Context:** The database schema uses relational SQL conventions (snake_case column names, arrays, server timestamps), while the web frontend and public API contract expect camelCase JSON objects with specific naming (`ownerId` instead of `created_by`, `complexity` instead of `difficulty`).
+- **Decision:** Establish an explicit transformation function `toProjectResponse()` within the route/controller layer. Database column definitions (`ProjectRow`) remain strictly separated from API response contracts.
+- **Alternatives Considered:**
+  - Automatic snake-to-camel casing libraries (adds hidden runtime reflection, obscures field mapping, and makes debugging difficult).
+  - Naming PostgreSQL columns in camelCase with double quotes (`"frontendTech"`) (anti-pattern in PostgreSQL requiring quoting everywhere and complicating SQL migrations).
+- **Consequences:** Explicit, compile-time verified mapping between database representation and public API contract. Any schema changes are isolated to the mapper function without breaking frontend clients.
+
+## EXDR-008: Clerk JWT Authentication & Resource Ownership Verification
+- **Date:** 2026-11-18
+- **Status:** Accepted
+- **Context:** The Express backend previously relied on untrusted client headers (`X-User-Id`) for user identity during prototyping. A production-ready engineering simulation platform requires cryptographic proof of identity and strict backend authorization to prevent unauthorized project modification or deletion.
+- **Decision:** Adopt `@clerk/express` for asymmetric RS256 JWT signature verification and build functional authentication middleware:
+  1. `clerkMiddleware()` is mounted globally to parse and verify incoming session tokens against Clerk's cached JWKS keys.
+  2. `requireAuth` functional middleware enforces authentication (HTTP 401 Unauthorized) on protected routes (`POST /api/v1/projects`, `DELETE /api/v1/projects/:projectId`).
+  3. `assertProjectOwner` domain helper enforces resource ownership (HTTP 403 Forbidden) by comparing `app.projects.created_by` against the verified `userId`.
+  4. Test environments (`NODE_ENV === "test"`) allow a strictly isolated `x-test-user-id` header to enable deterministic, fast integration testing without cloud token generation.
+- **Alternatives Considered:**
+  - Hand-rolled JWT verification with `jsonwebtoken` (duplicates Clerk JWKS public key rotation logic and increases maintenance).
+  - Calling Clerk API on every request (introduces 100-200ms latency per HTTP request instead of local asymmetric signature checks).
+- **Consequences:** Cryptographically authoritative user identity, strict 401/403 security boundaries, zero per-request network overhead to Clerk, and zero ES6 classes.
+
+## EXDR-009: Dual-Persona Role Architecture (Candidate vs Assessor) with Ephemeral Share Links
+- **Date:** 2026-11-19
+- **Status:** Accepted
+- **Context:** MockPrep serves two distinct user types with incompatible objectives: candidates who prepare for interviews and attempt challenges, and assessors who design projects and assess participants. Interview projects must support private sharing and enforce non-permanent lifetimes (7 to 30 days) to prevent stale environments.
+- **Decision:**
+  1. Store user roles in `app.user_roles` with enforced check constraint `role IN ('candidate', 'assessor')`.
+  2. Implement functional middleware `requireRole(role)` and `attachRole()` for route-level authorization.
+  3. Projects carry `visibility` ('public' | 'private'), unique random UUID `share_token`, `expiry_days` (1-30), and computed `expires_at`.
+  4. Expose dedicated `/api/v1/shared/:shareToken` route returning full project details for any authenticated user with the token, returning HTTP 410 Gone if expired.
+  5. Add `app.project_bookmarks` for candidates to save interesting public challenges.
+- **Alternatives Considered:**
+  - Role metadata stored directly inside Clerk user claims (requires Clerk management API roundtrips and complicates local test mock environments).
+  - Permanent projects with indefinite lifespans (leads to cloud environment sprawl and stale challenge setups).
+- **Consequences:** Clear role isolation, leak-proof link-based project sharing, guaranteed expiration bounds, and independent dashboard experiences.
+
+
+

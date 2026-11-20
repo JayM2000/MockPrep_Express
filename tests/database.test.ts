@@ -22,10 +22,17 @@ describe("Express PostgreSQL Database Foundation (app schema)", () => {
       id: testId,
       name: "Phase 5 Test Project",
       description: "Verifying Neon app schema connection",
-      difficulty: "medium",
+      difficulty: "intermediate",
+      category: "Testing",
+      frontend_tech: "React",
+      backend_tech: "Express",
+      database_tech: "PostgreSQL",
       tech_stack: ["TypeScript", "Express", "PostgreSQL"],
+      tags: ["test"],
+      status: "draft",
       repository_url: "https://github.com/test/repo",
       created_by: "user_test_123",
+      share_token: `test_token_${Date.now()}`,
     })
 
     expect(created.id).toBe(testId)

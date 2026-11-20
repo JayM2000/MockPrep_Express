@@ -4,10 +4,13 @@
 - **Directory:** `MockPrep_Express/` (co-located in monorepo, excluded from frontend git tracking in root `.gitignore`).
 - **Primary Framework:** Node.js (v22.16.0) + Express + TypeScript.
 - **Role:** Main application gateway and primary backend service as defined in `AI_Project_Platform_Monorepo_Phased_Implementation_Guide.md`.
-- **Current Phase:** Phase 5 (PostgreSQL Foundation & Schema Ownership) completed. Next up: Phase 6 (First Complete Vertical Slice: Project Creation).
+- **Current Phase:** Phase 8 (Role-Based System, Project Visibility & Expiry) completed. Next up: Phase 9 (FastAPI AI heavy integration & challenge generation).
 - **Core Ownership:**
-  - Application user profiles and organizations.
-  - Projects and project ownership (`app.projects` table in Neon PostgreSQL).
+  - Application user profiles, roles, and onboarding (`app.user_roles` table: 'candidate' | 'assessor').
+  - Projects, project ownership, visibility, and expiry (`app.projects` table in Neon PostgreSQL).
+  - Public `/api/v1/projects/*` endpoints for project CRUD, role checks, and candidate bookmarking.
+  - Secret share link access via `/api/v1/shared/:shareToken` for private assessment sharing.
+  - Candidate bookmarks (`app.project_bookmarks`) and session invites (`app.session_invites`).
   - Challenge lifecycle, acceptance criteria, and creator approvals.
   - Public `/api/v1/challenges/*` routing and delegation to FastAPI AI engine.
   - Interview sessions, invitations, and participant rosters.
@@ -26,8 +29,8 @@
 - **Database Access:** Pure functional `pg` client (`src/database/connection.ts`) with connection pooling, transactions, and functional repositories
 - **Validation:** Type-safe DTOs & Express route validators
 - **Realtime Gateway:** Socket.IO
-- **Authentication:** Clerk Express SDK / JWT verification
-- **Testing:** Vitest + Supertest
+- **Authentication:** Clerk Express SDK / JWT verification + Role middleware (`requireRole`)
+- **Testing:** Vitest + Supertest (38 passing tests)
 - **Service Integration:** Typed `FastApiClient` (`src/integrations/fastapi-client/`) with timeout, correlation ID, and secret token injection calling internal FastAPI endpoints (`MockPrep_FastAPI`)
 
 ## 3. Architecture Layout
@@ -37,14 +40,13 @@ MockPrep_Express/
 │   ├── app.ts                  # Express application factory & middleware setup
 │   ├── server.ts               # HTTP & Socket.IO server startup
 │   ├── config/                 # Environment & typed configuration
-│   ├── middleware/             # Auth, error handling, logging, validation
-│   ├── routes/                 # Express route definitions
-│   ├── modules/                # Feature modules (projects, challenges, sessions)
-│   ├── services/               # Core business logic
-│   ├── database/               # Database connection pool & migrations
-│   ├── realtime/               # Socket.IO handlers & rooms
+│   ├── middleware/             # Auth, role check, error handling, validation
+│   ├── routes/                 # Express route definitions (projects, users, shared, etc.)
+│   ├── modules/                # Feature modules (projects, users)
+│   ├── database/               # Database connection pool & migrations (001 - 005)
+│   ├── utils/                  # Centralized path registries & token helpers
 │   └── integrations/           # Client for communicating with FastAPI AI service
-├── tests/
+├── tests/                      # 38 integration & unit tests
 ├── package.json
 ├── tsconfig.json
 └── .gitignore

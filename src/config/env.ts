@@ -10,6 +10,8 @@ export interface EnvConfig {
   FASTAPI_BASE_URL: string
   INTERNAL_SERVICE_TOKEN: string
   DATABASE_URL: string
+  CLERK_PUBLISHABLE_KEY: string
+  CLERK_SECRET_KEY: string
 }
 
 export const env: EnvConfig = {
@@ -19,4 +21,6 @@ export const env: EnvConfig = {
   FASTAPI_BASE_URL: process.env.FASTAPI_BASE_URL || "http://127.0.0.1:8000",
   INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN!,
   DATABASE_URL: process.env.DATABASE_URL!,
+  CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY || "",
+  CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY || "",
 }

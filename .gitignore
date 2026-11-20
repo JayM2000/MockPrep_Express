@@ -8,6 +8,9 @@ build/
 # Testing
 coverage/
 
+# graphify
+graphify-out/
+
 # Environment variables
 .env
 .env.local

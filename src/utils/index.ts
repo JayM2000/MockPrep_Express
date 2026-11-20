@@ -1,3 +1,7 @@
 export * from "./api-paths"
 export * from "./health.paths"
 export * from "./challenge.paths"
+export * from "./project.paths"
+export * from "./user.paths"
+export * from "./shared.paths"
+export * from "./token"

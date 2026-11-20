@@ -122,5 +122,133 @@ We adapted our architecture per `AI_Project_Platform_Monorepo_Phased_Implementat
 - `tests/database.test.ts`: Automated integration tests verifying Neon connection health and a complete project CRUD lifecycle.
 - Verification: 11/11 tests pass (`npm test`) and `npm run build` compiles with zero TypeScript errors.
 
+---
+
+## Phase 6: First Complete Vertical Slice: Project Creation
+
+### 1. Concepts Learned & Applied
+- **Full-Stack Vertical Slice Architecture:**
+  - Connecting the Next.js frontend -> Express API -> PostgreSQL database for end-to-end user workflows.
+  - Eliminating mock in-memory stores and replacing them with live HTTP API contracts and database persistence.
+- **Contract & Schema Alignment:**
+  - Bridging frontend domain models (`category`, `frontendTech`, `backendTech`, `database`, `tags`, `status`) with relational PostgreSQL schema columns (`app.projects`).
+  - Running forward migration `002_update_projects_add_fields.sql` using `ALTER TABLE ADD COLUMN IF NOT EXISTS`.
+- **Data Normalization & DTO Mapping:**
+  - Route-level transformation function `toProjectResponse()` cleanly maps snake_case database rows (`frontend_tech`, `created_by`, `difficulty`) into client camelCase DTOs (`frontendTech`, `ownerId`, `complexity`).
+- **Centralized Route Path Registry (`PROJECT_PATHS`):**
+  - Path constants declared in `src/utils/project.paths.ts` and unified in `src/utils/index.ts`. No hardcoded endpoint strings in routes, app factory, or tests.
+- **RESTful Endpoints for Resources:**
+  - `POST /api/v1/projects`: Validates body (min 3 chars name, min 10 chars description, valid complexity enum), generates UUID, inserts into DB, returns 201 Created.
+  - `GET /api/v1/projects`: Lists projects ordered by `created_at DESC` with pagination (`limit`, `offset`).
+  - `GET /api/v1/projects/:projectId`: Fetches project by ID or returns 404 AppError.
+  - `DELETE /api/v1/projects/:projectId`: Deletes project by ID or returns 404 AppError.
+- **Next.js 16 Partial Prerendering (PPR) & Clerk Boundary Design:**
+  - Middleware-level auth guarding (`clerkMiddleware`) ensures dynamic session inspection occurs in proxy/middleware rather than crashing static page prerender workers.
+  - Pages stay prerenderable with client-side TanStack Query hydration.
+
+### 2. Implemented & Verified
+- `MockPrep_Express/src/database/migrations/002_update_projects_add_fields.sql`: Schema migration adding missing frontend fields.
+- `MockPrep_Express/src/utils/project.paths.ts`: Centralized project route path registry.
+- `MockPrep_Express/src/modules/projects/project.repository.ts`: Updated with expanded `ProjectRow` and `CreateProjectInput`.
+- `MockPrep_Express/src/routes/project.routes.ts`: Project router with validation, DTO transformation, and CRUD handlers.
+- `MockPrep_Express/src/app.ts`: Registered `projectRouter` on `PROJECT_PATHS.BASE`.
+- `MockPrep_Express/tests/project.routes.test.ts`: 10 comprehensive integration tests covering POST, GET, GET by ID, DELETE, 400 validations, and 404s.
+- `src/lib/api/client.ts`: Updated to support `NEXT_PUBLIC_EXPRESS_API_URL` prefix for relative API paths.
+- `src/services/projects/project.service.ts`: Swapped mock fixture store with real API calls to Express `/api/v1/projects`.
+- `src/features/projects/components/create-project-form.tsx`: Connected to real mutation and instant redirect on success.
+- Verification: Express 21/21 tests pass, FastAPI 13/13 tests pass, Next.js builds clean (`next build` 14/14 routes compiled), and ESLint passes with 0 warnings/errors.
+
+---
+
+## Phase 7: Clerk Authentication & Resource Authorization
+
+### 1. Concepts Learned & Applied
+- **Authentication (AuthN) vs. Authorization (AuthZ):**
+  - **AuthN (401 Unauthorized):** Proving identity. Handled by verifying cryptographic RS256 signatures of JWT tokens issued by Clerk. If missing, expired, or invalid, Express rejects the request with HTTP 401.
+  - **AuthZ (403 Forbidden):** Enforcing permissions. Once identity is proven (`res.locals.userId`), the application inspects resource ownership (`app.projects.created_by`). If a user attempts to mutate or delete a project they do not own, Express rejects the request with HTTP 403 Forbidden.
+- **Asymmetric Cryptography & JWKS (JSON Web Key Set):**
+  - Clerk signs JWT tokens with a private key.
+  - `@clerk/express` fetches and caches Clerk's public JWKS keys once, verifying incoming signatures locally in memory with zero per-request network round-trips to Clerk servers.
+- **Pure Function-Based Auth Middleware (EXDR-004):**
+  - Built `src/middleware/auth.ts` without ES6 classes:
+    - `getAuthenticatedUser(req)`: Pure function extracting the verified user ID via `getAuth(req)`.
+    - `requireAuth(req, res, next)`: Middleware closure guarding protected endpoints. Rejects unauthenticated requests with 401 AppError and assigns `res.locals.userId = userId`.
+    - `assertProjectOwner(projectCreatedBy, currentUserId)`: Functional domain assertion ensuring resource ownership before destructive actions, throwing 403 AppError on mismatch.
+- **Safe Testing Mode via `NODE_ENV === "test"` Scoping:**
+  - Integrated a test-mode bypass (`x-test-user-id`) strictly guarded by `env.NODE_ENV === "test"` so Vitest/Supertest suites can execute isolated integration tests deterministically without needing active network sessions to Clerk's cloud.
+- **Frontend Automatic Token Resolution:**
+  - Upgraded Next.js `apiClient` (`src/lib/api/client.ts`) to automatically extract the active session token from `window.Clerk.session.getToken()` on browser calls and attach it as `Authorization: Bearer <token>`, providing transparent authentication across all frontend features.
+
+### 2. Implemented & Verified
+- Installed `@clerk/express` in `MockPrep_Express`.
+- `MockPrep_Express/src/config/env.ts`: Added `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`.
+- `MockPrep_Express/.env` & `.env.example`: Configured development keys.
+- `MockPrep_Express/src/middleware/auth.ts`: Implemented `getAuthenticatedUser`, `requireAuth`, and `assertProjectOwner`.
+- `MockPrep_Express/src/app.ts`: Mounted `clerkMiddleware()` into Express middleware chain.
+- `MockPrep_Express/src/routes/project.routes.ts`: Secured `POST /` with `requireAuth` and `DELETE /:projectId` with `requireAuth` + `assertProjectOwner`.
+- `MockPrep_Express/tests/auth.test.ts`: Created dedicated automated test suite verifying 401 unauthenticated rejections, 403 non-owner mutation blocks, and 200 owner deletion.
+- `MockPrep_Express/tests/project.routes.test.ts`: Updated route test suite with authenticated identities.
+- `src/lib/api/client.ts`: Wired automatic Clerk bearer token injection.
+- Verification: Express 24/24 tests pass, FastAPI 13/13 tests pass, Next.js build clean (14/14 routes compiled), and Next.js lint clean (0 warnings/errors).
+
+---
+
+## Phase 8: Role-Based System (Candidate vs Assessor), Project Visibility & Expiry (2026-11-19)
+
+### 1. Concepts Mastered
+- **Dual-Persona Role Architecture (Candidate vs Assessor):**
+  - Segmented the user base into two dedicated personas:
+    - `candidate`: End-users preparing for technical interviews, exploring public projects, and saving bookmarks.
+    - `assessor`: Technical leads and evaluators designing assessment projects, setting visibility and expiry bounds, and managing candidate evaluation sessions.
+  - User onboarding stored in `app.user_roles` with check constraint `role IN ('candidate', 'assessor')`.
+- **Ephemeral Project Lifecycle & Automatic Expiration:**
+  - Added project visibility ('public' | 'private'), unique random UUID `share_token`, `expiry_days` (1 to 30), and computed timestamp `expires_at`.
+  - Non-permanent project design: prevents cloud environment sprawl and guarantees interview environments stay current.
+  - Assessors can renew projects up to 30 days via `PATCH /api/v1/projects/:projectId/renew`.
+- **Secret Link Sharing (`/api/v1/shared/:shareToken`):**
+  - Any authenticated registered user (Candidate or Assessor) possessing the link can view private projects as long as they are active.
+  - Expired links return HTTP 410 Gone with a dedicated explanation banner.
+- **Candidate Bookmarks (`app.project_bookmarks`):**
+  - Candidates can bookmark interesting public challenges via `POST/DELETE /api/v1/projects/:projectId/bookmark` and review them at `/bookmarks`.
+- **Role-Aware Express Middleware:**
+  - `requireRole(role)`: Functional middleware enforcing role-specific route protection (HTTP 403 Forbidden).
+  - `attachRole()`: Loads caller role on mixed-access endpoints (`GET /api/v1/projects`) without rejecting access.
+
+### 2. Implemented & Verified
+- Database Migrations:
+  - `003_create_user_roles.sql`: Created `app.user_roles` table with indexes.
+  - `004_add_project_visibility_expiry.sql`: Added `visibility`, `share_token`, `expiry_days`, `expires_at` to `app.projects`.
+  - `005_create_bookmarks_session_invites.sql`: Created `app.project_bookmarks` and `app.session_invites`.
+- Express Backend:
+  - `src/modules/users/user-role.repository.ts`: Pure functional repository for user onboarding.
+  - `src/modules/projects/bookmark.repository.ts`: Pure functional repository for candidate bookmarks.
+  - `src/modules/projects/project.repository.ts`: Updated `createProject`, `listProjects` (role-filtered), and `renewProject`.
+  - `src/middleware/role.ts`: Implemented `requireRole` and `attachRole`.
+  - `src/routes/user.routes.ts`: `POST /api/v1/users/role` & `GET /api/v1/users/me`.
+  - `src/routes/shared.routes.ts`: `GET /api/v1/shared/:shareToken`.
+  - `src/routes/project.routes.ts`: Role-aware project creation, filtering, bookmarking, and renewals.
+  - `tests/project.routes.test.ts`: Expanded to 24 tests covering role checks, shared link access, and bookmarks.
+- Frontend (Next.js):
+  - User role context (`src/context/user-role-context.tsx`).
+  - `/onboarding` page for seamless post-signup role selection.
+  - Role-customized navigation (`src/config/navigation.ts`, `src/components/layout/sidebar/sidebar-nav.tsx`).
+  - Candidate Dashboard (`src/components/dashboard/candidate-dashboard.tsx`).
+  - Assessor Dashboard (`src/components/dashboard/assessor-dashboard.tsx`).
+  - Project card upgrades: visibility badge, expiry pill, one-click share link copy, and candidate bookmarking.
+  - Create Project Form: visibility toggle (public/private) and expiry slider (7-30 days) with Candidate block guard.
+  - `/discover`: Real-time search and filter for all active public projects.
+  - `/bookmarks`: Candidate library of saved challenges.
+  - `/links`: Assessor console for copying active candidate share links and extending expirations.
+  - `/analytics`: Assessor overview of active vs expired links, difficulty breakdown, and public catalog exposure.
+  - `/p/[shareToken]`: Suspense-wrapped share link landing page with 410 expired error handling.
+- Verification:
+  - Express test suite: 38/38 tests passing across 6 test suites.
+  - Express typecheck: 0 errors.
+  - FastAPI AI test suite: 13/13 tests passing.
+  - Next.js production build: 20/20 routes prerendered cleanly.
+  - Next.js lint: 0 errors.
+
+
+
 
 
